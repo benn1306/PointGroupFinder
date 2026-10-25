@@ -46,3 +46,30 @@ def CentralAtom(formula):
     central_atom = min(centre_candidates,key=lambda x: x[1])[0]
     return central_atom
 
+#returns a list of substituents on central atom 
+#from formula  "CH4" returns [H,H,H,H], "Fe(H20)6" returns [H20,H20,H20,H20,H20,H20]
+def Substituents(formula):
+    #create list of substituents ignoring central atom
+    central_atom = CentralAtom(formula)
+    remove_centre = formula.replace(central_atom,"",1)
+    
+    search = r"\((.*?)\)(\d*)|([A-Z][a-z]?)(\d*)"
+    substituents_tuple = re.findall(search,remove_centre)
+
+    substituents = []
+    for molecule,molecule_quant,atom,atom_quant in substituents_tuple:
+        if molecule:
+            if molecule_quant:
+                num = int(molecule_quant)  
+            else:num = 1
+            
+            substituents.extend([molecule]*num)
+
+        elif atom:
+            if atom_quant:
+                num = int(atom_quant)
+            else:num = 1
+
+            substituents.extend([atom]*num)
+
+    return substituents
