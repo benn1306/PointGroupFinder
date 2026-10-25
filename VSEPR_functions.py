@@ -14,6 +14,19 @@ groups = {1:["H","Li","Na","K","Rb","Cs","Fr"]
           ,17:["F","Cl","Br","I","At","Uus"]
           ,18:["He","Ne","Ar","Kr","Xe","Rn","Uuo"]}
 
+#Dictionary of shapes, keys given (lone pairs, bonding pairs)
+shapes = {(0, 2): "Linear",(3, 2): "Linear",(4, 2): "Linear",
+    (1, 2): "Bent",(2, 2): "Bent",
+    (0, 3): "Trigonal Planar",(1, 3): "Trigonal Pyramid",
+    (2, 3): "T-Shape",(3, 3): "T-Shape",
+    (0, 4): "Tetrahedral",
+    (1, 4): "Sawhorse",
+    (2, 4): "Square Planar",
+    (0, 5): "Trigonal Bipyramidal",
+    (1, 5): "Square Pyramid",
+    (0, 6): "Octahedral"}
+
+
 #Finds group number of given element (if not in dict return -1)
 def GroupNumFinder(element):
     for group_num, elements in groups.items():
@@ -49,14 +62,22 @@ def CentralAtom(formula):
 #returns a list of substituents on central atom 
 #from formula  "CH4" returns [H,H,H,H], "Fe(H20)6" returns [H20,H20,H20,H20,H20,H20]
 def Substituents(formula):
-    #create list of substituents ignoring central atom
+    substituents = []
+    #create string of substituents ignoring central atom
     central_atom = CentralAtom(formula)
+    central_atom_count = re.search(rf"{central_atom}(\d*)",formula)
+    try:
+        if central_atom_count:
+            substituents.extend([central_atom]*(int(central_atom_count.group(1))-1))
+    except:
+        pass
     remove_centre = formula.replace(central_atom,"",1)
     
+    #Finds all substituents in the compound and how many times they occur
     search = r"\((.*?)\)(\d*)|([A-Z][a-z]?)(\d*)"
     substituents_tuple = re.findall(search,remove_centre)
 
-    substituents = []
+    #Unpacks encoded substituents
     for molecule,molecule_quant,atom,atom_quant in substituents_tuple:
         if molecule:
             if molecule_quant:
@@ -73,3 +94,53 @@ def Substituents(formula):
             substituents.extend([atom]*num)
 
     return substituents
+
+#Finds charge of formula
+def ChargeFinder(formula):
+    charge_search = re.search(r"\]?(\d*)([+-])$",formula.strip())
+    if not charge_search:
+        return 0
+    
+    charge, sign = charge_search.groups()
+    if charge:
+        charge = (int(charge))
+    else:
+        charge = 1
+    if sign == "-":
+        charge *= -1
+    return charge
+
+#Finds number of lone pairs
+def LonePairsBondedPairs(formula):
+    #Number of substituents (assuming single bonds)
+    num_subs = len(Substituents(formula))
+    
+    #group number
+    central_atom = CentralAtom(formula)
+    num_ve = GroupNumFinder(central_atom)
+
+    charge_e = ChargeFinder(formula)
+
+    #Exceptions for transition metals
+    if 3<= num_ve <= 12:
+        if num_subs == 4:
+            if central_atom in groups[num_ve][1:]:
+                return(2,4) 
+            #Will add ligand evaluation to allow for period 4 transition metals to have accurate shapes
+        return(0,num_subs)
+
+    #Valence electrons
+    if num_ve > 12:
+        num_ve -= 10
+
+    num_ve -= charge_e
+
+    #Number of lone pairs based on charge + valence electrons - substituents
+    num_lp = (num_ve - num_subs)//2
+    return (max(-1,num_lp),num_subs)
+
+def FindShape(formula):
+    lp_bp = LonePairsBondedPairs(formula)
+    if lp_bp[0] == -1:
+        return "Formula Error"
+    return shapes.get(lp_bp,"Shape Not Defined")
