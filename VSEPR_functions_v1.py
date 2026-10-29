@@ -26,6 +26,14 @@ shapes = {(0, 2): "Linear",(3, 2): "Linear",(4, 2): "Linear",
     (1, 5): "Square Pyramid",
     (0, 6): "Octahedral"}
 
+#Find out if a substituent will form single, double or triple bonds
+def BondOrderApprox(substituent):
+    group_num = GroupNumFinder(substituent)
+    if group_num <=12 or len(substituent)>2:
+        return 1
+    else:
+        num_ve = group_num - 10
+        return 8-num_ve
 
 #Finds group number of given element (if not in dict return -1)
 def GroupNumFinder(element):
@@ -54,7 +62,7 @@ def CentralAtom(formula):
         centre_candidates.append((element,group_num))
     #if no candidates return -1 to indicate error
     if not centre_candidates:
-        return -1
+        return ""
     #returns lowest electronegativity atom
     central_atom = min(centre_candidates,key=lambda x: x[1])[0]
     return central_atom
@@ -112,13 +120,17 @@ def ChargeFinder(formula):
 
 #Finds number of lone pairs
 def LonePairsBondedPairs(formula):
-    #Number of substituents (assuming single bonds)
-    num_subs = len(Substituents(formula))
     
+    subs = Substituents(formula)
+    num_subs = 0
+    for sub in subs:
+        num_subs += BondOrderApprox(sub)
+
     #group number
     central_atom = CentralAtom(formula)
     num_ve = GroupNumFinder(central_atom)
 
+    #returns molecule charge
     charge_e = ChargeFinder(formula)
 
     #Exceptions for transition metals
@@ -134,7 +146,6 @@ def LonePairsBondedPairs(formula):
         num_ve -= 10
 
     num_ve -= charge_e
-
     #Number of lone pairs based on charge + valence electrons - substituents
     num_lp = (num_ve - num_subs)//2
     return (max(-1,num_lp),num_subs)
@@ -143,4 +154,11 @@ def FindShape(formula):
     lp_bp = LonePairsBondedPairs(formula)
     if lp_bp[0] == -1:
         return "Formula Error"
+    print(lp_bp)
     return shapes.get(lp_bp,"Shape Not Defined")
+
+if __name__ == "__main__":
+    run = "y"
+    while run != "n":
+        print(FindShape(str(input("Enter simple molecule: "))))
+        run = input("Continue (y/n): ")
