@@ -1,4 +1,3 @@
-from VSEPR_functions_v1 import groups,GroupNumFinder
 import re
 import numpy as np
 
@@ -9,9 +8,32 @@ import numpy as np
 #4. position bonding regions and lone pairs as spaced out around central atom as possible
 #5. calculate atom positions
 
+#Dictionary of most elements and their group number
+groups = {1:["H","Li","Na","K","Rb","Cs","Fr"]
+          ,2:["Be","Mg","Ca","Sr","Ba","Ra"]
+          ,3:["Sc","Y"],4:["Ti","Zr","Hf"]
+          ,5:["V","Nb","Ta"],6:["Cr","Mo","W"]
+          ,7:["Mn","Tc","Re"],8:["Fe","Ru","Os"]
+          ,9:["Co","Rh","Ir"],10:["Ni","Pd","Pt"]
+          ,11:["Cu","Ag","Au"],12:["Zn","Cd","Hg"]
+          ,13:["B","Al","Ga"]
+          ,14:["C","Si","Ge","Sn"]
+          ,15:["N","P","As","Sb","Bi"]
+          ,16:["O","S","Se","Te","Po","Lv"]
+          ,17:["F","Cl","Br","I","At","Uus"]
+          ,18:["He","Ne","Ar","Kr","Xe","Rn","Uuo"]}
+
 #define repulsion constants for Thomson Problem
 lp_repulsion = 1.25
 bp_repulsion = 1.0
+
+#Finds group number of given element (if not in dict return -1)
+def GroupNumFinder(element):
+    for group_num, elements in groups.items():
+        if element in elements:
+            return group_num
+    return -1
+
 
 def ListElements(formula):
     #list of all elements and substituents encoded
@@ -113,8 +135,9 @@ def NumLonePairs(formula):
     return (ve_count + FindCharge(formula) - used_ve)//2
 
 #Finds coordinates around sphere that minimise repulsion between charges (Thomson Problem)
-def FindCoords(lp,bp,formula,steps=1000,lr=0.01):
-    N = lp + bp
+def FindCoords(formula,steps=1000,lr=0.01):
+    lp,bp = NumLonePairs(formula),NumBondingRegions(formula)
+    N=lp+bp
     if N < 2:
         raise ValueError("Not enough electron dense regions to find geometry")
     
@@ -152,9 +175,9 @@ def FindCoords(lp,bp,formula,steps=1000,lr=0.01):
 
 #prints list of angles between bonds (work on)
 def print_bond_angles(formula):
-    coords,labels = FindCoords(NumLonePairs(formula),NumBondingRegions(formula),formula) #generate spaced out coordinates and associated labels for given formula
+    coords,labels = FindCoords(formula) #generate spaced out coordinates and associated labels for given formula
     N = len(coords) #How many bond angles need to be printed
-
+    print(coords,labels)
     #Formating
     print(f"\n{'Pair I':<15} {'Pair J':<15} {'Angle (Degrees)':<15}")
     print("-" * 48)
