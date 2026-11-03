@@ -110,4 +110,6 @@ def PlotAtoms(formula):
 
     plt.show()
 
-PlotAtoms("Fe(CO)6")
+
+if __name__ == "__main__":
+    PlotAtoms(input("enter molecule to display: "))
