@@ -1,34 +1,33 @@
-import re
-import numpy as np
-
 #VSPER rules: 
 #1. Find central atom - usually least electronegative
 #2. Find number of bonding regions
 #3. Find lone pairs
 #4. position bonding regions and lone pairs as spaced out around central atom as possible
 #5. calculate atom positions
+import re
+import numpy as np
 
 #Dictionary of most elements and their group number
 groups = {1:["H","Li","Na","K","Rb","Cs","Fr"]
-          ,2:["Be","Mg","Ca","Sr","Ba","Ra"]
-          ,3:["Sc","Y"],4:["Ti","Zr","Hf"]
-          ,5:["V","Nb","Ta"],6:["Cr","Mo","W"]
-          ,7:["Mn","Tc","Re"],8:["Fe","Ru","Os"]
-          ,9:["Co","Rh","Ir"],10:["Ni","Pd","Pt"]
-          ,11:["Cu","Ag","Au"],12:["Zn","Cd","Hg"]
-          ,13:["B","Al","Ga"]
-          ,14:["C","Si","Ge","Sn"]
-          ,15:["N","P","As","Sb","Bi"]
-          ,16:["O","S","Se","Te","Po","Lv"]
-          ,17:["F","Cl","Br","I","At","Uus"]
+          ,2:["","Be","Mg","Ca","Sr","Ba","Ra"]
+          ,3:["","","","Sc","Y"],4:["","","","Ti","Zr","Hf"]
+          ,5:["","","","V","Nb","Ta"],6:["","","","Cr","Mo","W"]
+          ,7:["","","","Mn","Tc","Re"],8:["","","","Fe","Ru","Os"]
+          ,9:["","","","Co","Rh","Ir"],10:["","","","Ni","Pd","Pt"]
+          ,11:["","","","Cu","Ag","Au"],12:["","","","Zn","Cd","Hg"]
+          ,13:["","B","Al","Ga"]
+          ,14:["","C","Si","Ge","Sn"]
+          ,15:["","N","P","As","Sb","Bi"]
+          ,16:["","O","S","Se","Te","Po","Lv"]
+          ,17:["","F","Cl","Br","I","At","Uus"]
           ,18:["He","Ne","Ar","Kr","Xe","Rn","Uuo"]}
 
 #define repulsion constants for Thomson Problem
 lp_repulsion = 1.25
 bp_repulsion = 1.0
 
-#Finds group number of given element (if not in dict return -1)
 def GroupNumFinder(element):
+    """Returns the group number of given element, -1 if not found"""
     for group_num, elements in groups.items():
         if element in elements:
             return group_num
@@ -36,6 +35,7 @@ def GroupNumFinder(element):
 
 
 def ListElements(formula):
+    """Breaks a formula into sublists of elements for each substituent"""
     #list of all elements and substituents encoded
     element_encoded = re.findall(r"[A-Z][a-z]?\d*|\(.*?\)\d*", formula)
     
@@ -91,6 +91,7 @@ def ListElements(formula):
     return elements
 
 def FindCharge(formula):
+    """Returns the charge of a molecule"""
     #check if final number followed by +/- 
     charge_search = re.search(r"\]?(\d*)([+-])$",formula.strip())
     if not charge_search: #If no charge given return 0
@@ -107,8 +108,8 @@ def FindCharge(formula):
         charge *= -1
     return charge
 
-#Return most likely central atom
 def CentralAtom(formula):
+    """Returns most likely central atom of a molecule based on electronegativity"""
     elements = ListElements(formula)
 
     #For loop to search for potential central atoms
@@ -121,76 +122,144 @@ def CentralAtom(formula):
     central_atom = min(central_cand, key=lambda x: x[1])
     return central_atom
 
-#Find number of bonding regions
 def NumBondingRegions(formula):
+    """Returns number of bonded regions about a central atom in a molecule"""
     return len(ListElements(formula))-1
 
 def NumLonePairs(formula):
+    """Returns the number of lone pairs on the central atom of a molecule"""
     group = CentralAtom(formula)[1]
     used_ve = NumBondingRegions(formula)
+
     #Use group number to find valence electron count
     if 3<group<=12: return 0
     ve_count = group - 10 if group > 12 else group
-    used_ve = NumBondingRegions(formula)
-    return (ve_count + FindCharge(formula) - used_ve)//2
 
-#Finds coordinates around sphere that minimise repulsion between charges (Thomson Problem)
-def FindCoords(formula,steps=1000,lr=0.01):
-    lp,bp = NumLonePairs(formula),NumBondingRegions(formula)
-    N=lp+bp
-    if N < 2:
-        raise ValueError("Not enough electron dense regions to find geometry")
+    remaining_e = ve_count + FindCharge(formula) - used_ve
+
+    #round up radicals to be equivalent to lone pair
+    return remaining_e // 2 if remaining_e%2==0 else (remaining_e //2) + 1
+
+
+def GetRotationMatrix(vec_source, vec_target):
+    """Returns rotation matrix for directing subgroups away from central atom"""
+    #calculate length of target vector and swing direction
+    norm_s = np.linalg.norm(vec_source)
+    norm_t = np.linalg.norm(vec_target)
+    if norm_s < 1e-5 or norm_t < 1e-5: #if either length is less than 1e-5 return identity matrix
+        return np.eye(3)
+        
+    #Normalize both vectors to only look at rotation angle
+    u = vec_source / norm_s
+    v_target = vec_target / norm_t
     
-    #array of repulsion values with length N and bp:lp of bp_repulsions and lp_repulsions
+    #calculate dot product (cos of angle between the vectors)
+    dot = np.dot(u, v_target)
+    if dot > 0.9999: return np.eye(3) #if pointing same direction not rotation
+    if dot < -0.9999: return -np.eye(3) #if opposite direction 180 flip
+    
+    v = np.cross(u, v_target) #axis of rotation
+    s = np.linalg.norm(v) #length of v is sin of angle between them
+    
+    #Skew-symmetric matrix with components of v
+    kmat = np.array([
+        [  0,   -v[2],  v[1]],
+        [ v[2],   0,   -v[0]],
+        [-v[1],  v[0],   0  ]
+    ])
+    
+    #Rodigues rotation formula R = I + K + K^2(1-cos / sin^2)
+    return np.eye(3) + kmat + kmat.dot(kmat) * ((1 - dot) / (s ** 2))
+
+
+def HandleSubGroups(coords, labels, formula):
+    """Returns coordinates for elements in subgroups"""
+    #empty lists to update coordinates without using excess memory by appending to np array
+    final_coords = []
+    final_labels = []
+    
+    #iterate through list of 
+    for i, label in enumerate(labels):
+        if len(label) > 3 and not label == "Lone Pair" and " -> " not in label:
+            clean_sub_formula = "".join(label.split())[:-1] #removes number from end of substituent
+    
+            #Stores the label for the group including the number of times it had previously occured
+            unique_group_id = f"{label}"
+            
+            #Find coordinates of substituent elements about point (0,0,0)
+            new_coords, new_labels = FindCoords(clean_sub_formula)
+            
+            #Defines the location of the central atom of the substituent
+            parent_bond_vector = coords[i]
+            global_ligand_center = parent_bond_vector * 2.0  
+            
+            #Find the center axis of whatever outer atoms exist and point them outward
+            sub_bp = NumBondingRegions(clean_sub_formula) + 1 if not 3 < CentralAtom(formula)[1] <= 12 else NumBondingRegions(clean_sub_formula) 
+            local_axis_source = np.mean(new_coords[:sub_bp], axis=0)
+            target_axis_heading = parent_bond_vector
+            
+            #Generate matrix to calculate rotation
+            rot_matrix = GetRotationMatrix(local_axis_source, target_axis_heading)
+            
+            #Finds central atom of substituent
+            sub_center_info = CentralAtom(clean_sub_formula)
+            sub_center_atom = sub_center_info[0][0] 
+            
+            #append coordinate and label for centre of subgroup
+            final_coords.append(global_ligand_center)
+            final_labels.append(f"{unique_group_id} -> {sub_center_atom}")
+            
+            #append new coordinates for subgroup elements rotated to point away from main central atom
+            for (s_coord, s_label) in zip(new_coords, new_labels):
+                if s_label == "Lone Pair": 
+                    continue
+                global_xyz = rot_matrix.dot(s_coord * 0.96) + global_ligand_center
+                final_coords.append(global_xyz)
+                final_labels.append(f"{unique_group_id} -> {s_label}")
+        else: #if not a subgroup just append given label and coordinate
+            final_coords.append(coords[i] * 2.0)
+            final_labels.append(label)
+    
+    #convert to np array and return
+    return np.array(final_coords), final_labels
+
+
+def FindCoords(formula, steps=1000, lr=0.01):
+    """Finds coordinates around sphere that minimise repulsion between charges (Thomson Problem)"""
+    lp, bp = NumLonePairs(formula), NumBondingRegions(formula)
+    N = lp + bp
+    
+    #Array of length N consisting of the relevant like charges for the approximation
     charges = np.array([bp_repulsion] * bp + [lp_repulsion] * lp)
-    clean_formula = re.sub(CentralAtom(formula)[0][0],"",formula)
-    labels = ["".join(i)+" "+str(x+1) for x,i in enumerate(ListElements(clean_formula))] + ["Lone Pair"] * lp  #format numbered labels for bonded atoms
+    
+    centeral_atom = CentralAtom(formula)[0][0]
+    clean_formula = re.sub(re.escape(centeral_atom), "", formula, count=1) #Remove first instance of central atom from formula
+    
+    #List names of substituents and lone pairs
+    labels = ["".join(i)+" "+str(x+1) for x,i in enumerate(ListElements(clean_formula))] + ["Lone Pair"] * lp  
 
-    #Start at random positions
+    #Generate N random starting point coordinates on the surface of a sphere
     coords = np.random.normal(size=(N,3))
-    coords /= np.linalg.norm(coords, axis=1, keepdims=True) #Force points onto surface of sphere
+    coords /= np.linalg.norm(coords, axis=1, keepdims=True) 
 
-    #Iterative relaxation of repulsion
+    #Iterative relaxation for set amount of steps
     for _ in range(steps):
-        forces = np.zeros_like(coords)
+        forces = np.zeros_like(coords) #array of zeros that has same structure as coords array
         for i in range(N):
             for j in range(N):
-                if i == j:
-                    continue #dont check repulsion of the same coordinate
-
-                #vector pushes i away from j
-                diff = coords[i] - coords[j]
+                if i == j: continue #Dont compare coordinates with themselves
+                #Find differentce in coordinates and convert to distance
+                diff = coords[i] - coords[j] 
                 dist = np.linalg.norm(diff)
-
-                if dist > 1e-5:
-                    #Use variant of coulombs law to find force on coordinate i
+                #Vector that they i will be repelled from j by
+                if dist > 1e-5: 
                     forces[i] += (charges[i]*charges[j]*diff/(dist**3))
+         
+        coords += lr * forces #adds the force vectors to the random coordinates
+        coords /= np.linalg.norm(coords,axis=1,keepdims=True) #Snaps coordinates to sphere surface
 
-        #move along net repulsive force vector            
-        coords += lr * forces
-        coords /= np.linalg.norm(coords,axis=1,keepdims=True) #ensure everything is still on sphere surface
-
+    coords, labels = HandleSubGroups(coords, labels, formula)
     return coords, labels
 
-
-#prints list of angles between bonds (work on)
-def print_bond_angles(formula):
-    coords,labels = FindCoords(formula) #generate spaced out coordinates and associated labels for given formula
-    N = len(coords) #How many bond angles need to be printed
-    print(coords,labels)
-    #Formating
-    print(f"\n{'Pair I':<15} {'Pair J':<15} {'Angle (Degrees)':<15}")
-    print("-" * 48)
-
-    #Iterate through coords comparing dot products to work out angle in degrees and print in format
-    for i in range(N):
-        for j in range(i + 1, N):
-            dot_product = np.dot(coords[i], coords[j])
-            # Clip to avoid float precision issues with acccos
-            angle = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
-            print(f"{labels[i]:<15} {labels[j]:<15} {angle:<15.2f}")
-
-
-
 if __name__ == "__main__":
-    print_bond_angles(input("Enter formula to generate bond angles"))
+    print(FindCoords(input("Enter formula to generate bond angles: ")))
