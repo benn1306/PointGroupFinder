@@ -224,7 +224,7 @@ def HandleSubGroups(coords, labels, formula):
     return np.array(final_coords), final_labels
 
 
-def FindCoords(formula, steps=1000, lr=0.01, sub_group_coords = True):
+def FindCoords(formula, steps=4000, lr=0.01, sub_group_coords = True):
     """Finds coordinates around sphere that minimise repulsion between charges (Thomson Problem)"""
     lp, bp = NumLonePairs(formula), NumBondingRegions(formula)
     N = lp + bp
@@ -242,6 +242,10 @@ def FindCoords(formula, steps=1000, lr=0.01, sub_group_coords = True):
     coords = np.random.normal(size=(N,3))
     coords /= np.linalg.norm(coords, axis=1, keepdims=True) 
 
+    #add momentum to allow better coordinate mapping without massively increasing steps
+    velocity = np.zeros_like(coords)
+    momentum_decay = 0.3
+
     #Iterative relaxation for set amount of steps
     for _ in range(steps):
         forces = np.zeros_like(coords) #array of zeros that has same structure as coords array
@@ -255,11 +259,14 @@ def FindCoords(formula, steps=1000, lr=0.01, sub_group_coords = True):
                 if dist > 1e-5: 
                     forces[i] += (charges[i]*charges[j]*diff/(dist**3))
          
-        coords += lr * forces #adds the force vectors to the random coordinates
+        #adds the force vectors to the random coordinates
+        velocity = momentum_decay * velocity + lr * forces
+        coords += velocity
         coords /= np.linalg.norm(coords,axis=1,keepdims=True) #Snaps coordinates to sphere surface
     if sub_group_coords:
         coords, labels = HandleSubGroups(coords, labels, formula)
     return coords, labels
+    
 
 if __name__ == "__main__":
     print(FindCoords(input("Enter formula to generate bond angles: ")))
