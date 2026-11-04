@@ -224,7 +224,7 @@ def HandleSubGroups(coords, labels, formula):
     return np.array(final_coords), final_labels
 
 
-def FindCoords(formula, steps=1000, lr=0.01):
+def FindCoords(formula, steps=1000, lr=0.01, sub_group_coords = True):
     """Finds coordinates around sphere that minimise repulsion between charges (Thomson Problem)"""
     lp, bp = NumLonePairs(formula), NumBondingRegions(formula)
     N = lp + bp
@@ -257,8 +257,8 @@ def FindCoords(formula, steps=1000, lr=0.01):
          
         coords += lr * forces #adds the force vectors to the random coordinates
         coords /= np.linalg.norm(coords,axis=1,keepdims=True) #Snaps coordinates to sphere surface
-
-    coords, labels = HandleSubGroups(coords, labels, formula)
+    if sub_group_coords:
+        coords, labels = HandleSubGroups(coords, labels, formula)
     return coords, labels
 
 if __name__ == "__main__":
